@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cardano-sync-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cardano-sync-db
+  template:
+    metadata:
+      labels:
+        app: cardano-sync-db
+    spec:
+      volumes:
+        - name: cardano-db
+          persistentVolumeClaim:
+            claimName: cardano-db-pvc
+        - name: db-sync-config
+          configMap:
+            name: db-sync-config
+
+      initContainers:
+        - name: download-schema
+          image: alpine:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              rm -rf /cardano/data/schema &&
+              apk add --no-cache git &&
+              git clone --branch 13.6.0.4 --single-branch --depth 1 https://github.com/IntersectMBO/cardano-db-sync.git /tmp/cardano-db-sync &&
+              cp -r /tmp/cardano-db-sync/schema /cardano/data/
+          volumeMounts:
+            - name: cardano-db
+              mountPath: /cardano/data
+      containers:
+        - name: cardano-sync-db
+          image: ghcr.io/intersectmbo/cardano-db-sync:13.6.0.4
+          volumeMounts:
+            - name: db-sync-config
+              mountPath: /config
+            - name: cardano-db
+              mountPath: /cardano/data
+          env:
+            - name: NETWORK
+              value: preprod
+            - name: POSTGRES_HOST
+              value: postgresql-0.postgresql
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              value: cexplorer
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              value: postgrespassword #TODO: get from secret
+          command: ["/bin/bash", "-c"]
+          # args: ["sleep 1d"]
+          args: 
+            - |
+              echo "${POSTGRES_HOST}:${POSTGRES_PORT}:${POSTGRES_DB}:${POSTGRES_USER}:${POSTGRES_PASSWORD}" > .pgpass &&
+              chmod 600 .pgpass &&
+              export PGPASSFILE=.pgpass &&
+              cardano-db-sync --config /config/db-sync-config.json --socket-path /cardano/data/db/node.socket --schema-dir /cardano/data/schema
