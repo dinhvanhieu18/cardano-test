@@ -1,0 +1,28 @@
+{
+  "bootstrapPeers": [
+    {
+      "address": "relay-node.cardano.svc.cluster.local",
+      "port": 3001
+    }
+  ],
+  "localRoots": [
+    {
+      "accessPoints": [
+        {
+          "address": "relay-node.cardano.svc.cluster.local",
+          "port": 3001
+        }
+      ],
+      "advertise": false,
+      "trustable": false,
+      "valency": 1
+    }
+  ],
+  "publicRoots": [
+    {
+      "accessPoints": [],
+      "advertise": false
+    }
+  ],
+  "useLedgerAfterSlot": 64454371
+}

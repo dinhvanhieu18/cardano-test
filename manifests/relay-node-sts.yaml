@@ -1,24 +1,31 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: cardano-core-node
+  name: relay-node
 spec:
-  replicas: 1
+  volumeClaimTemplates:
+    - metadata:
+        name: cardano-data
+      spec:
+        accessModes:
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: "20Gi"
+  # serviceName: relay-node
+  replicas: 2
   selector:
     matchLabels:
-      app: cardano-core-node
+      app: relay-node
   template:
     metadata:
       labels:
-        app: cardano-core-node
+        app: relay-node
     spec:
       volumes:
-        - name: cardano-db
-          persistentVolumeClaim:
-            claimName: cardano-db-pvc
         - name: cardano-config
           configMap:
-            name: cardano-core-config
+            name: relay-node-config
 
       securityContext:
         runAsUser: 1000
@@ -37,7 +44,7 @@ spec:
               "chown -R 1000:1000 /cardano/data && chmod -R 775 /cardano/data",
             ]
           volumeMounts:
-            - name: cardano-db
+            - name: cardano-data
               mountPath: /cardano/data
         - name: mithril-bootstrap
           image: ghcr.io/input-output-hk/mithril-client:main-9a2faa1
@@ -45,38 +52,40 @@ spec:
             - name: AGGREGATOR_ENDPOINT
               value: https://aggregator.release-preprod.api.mithril.network/aggregator
           volumeMounts:
-            - name: cardano-db
+            - name: cardano-data
               mountPath: /cardano/data
           command: ["/bin/bash", "-c"]
-          # args: ["sleep 1d"]
-          args: [
-              # rm -rf /cardano/data/db &&
-              "/app/bin/mithril-client cardano-db
-              download
-              --download-dir /cardano/data
-              latest",
-            ]
-
+          args:
+            - |
+              if [ -z "$(ls -A /cardano/data/db)" ]; then
+                echo "Start bootstrap"
+                /app/bin/mithril-client cardano-db download --download-dir /cardano/data latest
+              else
+                echo "Skip bootstrap"
+              fi
       containers:
-        - name: cardano-core-node
+        - name: relay-node
           image: ghcr.io/intersectmbo/cardano-node:10.2.1
           ports:
             - containerPort: 3001
           volumeMounts:
             - name: cardano-config
               mountPath: /config
-            - name: cardano-db
+            - name: cardano-data
               mountPath: /cardano/data
           command: ["/bin/bash", "-c"]
           # args: ["sleep 1d"]
           args: [
               "cardano-node run
-              --topology /config/topology.json
+              --topology /config/relay-node-topology.json
               --database-path /cardano/data/db
               --socket-path /cardano/data/db/node.socket
-              --port 3001 --config /config/config.json",
+              --port 3001 --config /config/relay-node-config.json",
             ]
-          # resources:
-          #   requests:
-          #     memory: "4Gi"
-          #     cpu: "2"
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"

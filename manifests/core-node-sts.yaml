@@ -1,0 +1,143 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: core-node
+spec:
+  volumeClaimTemplates:
+    - metadata:
+        name: cardano-data
+      spec:
+        accessModes:
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: "20Gi"
+  # serviceName: core-node
+  replicas: 1
+  selector:
+    matchLabels:
+      app: core-node
+  template:
+    metadata:
+      labels:
+        app: core-node
+    spec:
+      volumes:
+        - name: cardano-config
+          configMap:
+            name: core-node-config
+
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: "OnRootMismatch"
+      initContainers:
+        - name: fix-permissions
+          image: busybox
+          securityContext:
+            runAsUser: 0
+          command:
+            [
+              "sh",
+              "-c",
+              "chown -R 1000:1000 /cardano/data && chmod -R 775 /cardano/data",
+            ]
+          volumeMounts:
+            - name: cardano-data
+              mountPath: /cardano/data
+        - name: mithril-bootstrap
+          image: ghcr.io/input-output-hk/mithril-client:main-9a2faa1
+          env:
+            - name: AGGREGATOR_ENDPOINT
+              value: https://aggregator.release-preprod.api.mithril.network/aggregator
+          volumeMounts:
+            - name: cardano-data
+              mountPath: /cardano/data
+          command: ["/bin/bash", "-c"]
+          # args: ["sleep 1d"]
+          args:
+            - |
+              if [ -z "$(ls -A /cardano/data/db)" ]; then
+                echo "Start bootstrap"
+                /app/bin/mithril-client cardano-db download --download-dir /cardano/data latest
+              else
+                echo "Skip bootstrap"
+              fi
+        - name: download-schema
+          image: alpine:latest
+          securityContext:
+            runAsUser: 0
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              rm -rf /cardano/data/schema &&
+              apk add --no-cache git &&
+              git clone --branch 13.6.0.4 --single-branch --depth 1 https://github.com/IntersectMBO/cardano-db-sync.git /tmp/cardano-db-sync &&
+              cp -r /tmp/cardano-db-sync/schema /cardano/data/
+          volumeMounts:
+            - name: cardano-data
+              mountPath: /cardano/data
+      containers:
+        - name: core-node
+          image: ghcr.io/intersectmbo/cardano-node:10.2.1
+          ports:
+            - containerPort: 3001
+          volumeMounts:
+            - name: cardano-config
+              mountPath: /config
+            - name: cardano-data
+              mountPath: /cardano/data
+          command: ["/bin/bash", "-c"]
+          # args: ["sleep 1d"]
+          args: [
+              "cardano-node run
+              --topology /config/core-node-topology.json
+              --database-path /cardano/data/db
+              --socket-path /cardano/data/db/node.socket
+              --port 3001 --config /config/core-node-config.json",
+            ]
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+        - name: sync-db
+          image: ghcr.io/intersectmbo/cardano-db-sync:13.6.0.4
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: cardano-config
+              mountPath: /config
+            - name: cardano-data
+              mountPath: /cardano/data
+          env:
+            - name: NETWORK
+              value: preprod
+            - name: POSTGRES_HOST
+              value: postgresql-0.postgresql
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              value: cexplorer
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              value: postgrespassword #TODO: get from secret
+          command: ["/bin/bash", "-c"]
+          # args: ["sleep 1d"]
+          args:
+            - |
+              echo "${POSTGRES_HOST}:${POSTGRES_PORT}:${POSTGRES_DB}:${POSTGRES_USER}:${POSTGRES_PASSWORD}" > .pgpass &&
+              chmod 600 .pgpass &&
+              export PGPASSFILE=.pgpass &&
+              cardano-db-sync --config /config/db-sync-config.json --socket-path /cardano/data/db/node.socket --schema-dir /cardano/data/schema
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "128Mi"
+            limits:
+              cpu: "400m"
+              memory: "256Mi"

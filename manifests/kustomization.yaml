@@ -3,32 +3,34 @@ kind: Kustomization
 namespace: cardano
 
 configMapGenerator:
-  - name: cardano-core-config
+  - name: core-node-config
     files:
-      - ./configs/common/topology.json
-      - ./configs/common/config.json
-      - ./configs/common/alonzo-genesis.json
-      - ./configs/common/byron-genesis.json
-      - ./configs/common/conway-genesis.json
-      - ./configs/common/shelley-genesis.json
+      - ./configs/core-node-topology.json
+      - ./configs/core-node-config.json
+      - ./configs/alonzo-genesis.json
+      - ./configs/byron-genesis.json
+      - ./configs/conway-genesis.json
+      - ./configs/shelley-genesis.json
+      - ./configs/db-sync-config.json
 
-  - name: db-sync-config
+  - name: relay-node-config
     files:
-      - ./configs/common/db-sync-config.json
-      - ./configs/common/config.json
-      - ./configs/common/alonzo-genesis.json
-      - ./configs/common/byron-genesis.json
-      - ./configs/common/conway-genesis.json
-      - ./configs/common/shelley-genesis.json
+      - ./configs/relay-node-topology.json
+      - ./configs/relay-node-config.json
+      - ./configs/alonzo-genesis.json
+      - ./configs/byron-genesis.json
+      - ./configs/conway-genesis.json
+      - ./configs/shelley-genesis.json
+      - ./configs/db-sync-config.json
 
 generatorOptions:
   disableNameSuffixHash: true
 
 resources:
-  - ./core-node-pvc.yaml
-  - ./core-node-dp.yaml
-  - ./core-node-svc.yaml
-
   - ./postgresql-sts.yaml
   - ./postgresql-svc.yaml
-  - ./db-sync-dp.yaml
+  - ./core-node-sts.yaml
+  - ./core-node-svc.yaml
+  - ./relay-node-sts.yaml
+  - ./relay-node-svc.yaml
+  - ./relay-node-hpa.yaml
