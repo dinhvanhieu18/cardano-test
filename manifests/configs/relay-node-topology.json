@@ -13,16 +13,11 @@
           "port": 3001
         }
       ],
-      "advertise": false,
-      "trustable": false,
+      "advertise": true,
+      "trustable": true,
       "valency": 1
     }
   ],
-  "publicRoots": [
-    {
-      "accessPoints": [],
-      "advertise": false
-    }
-  ],
+  "publicRoots": [],
   "useLedgerAfterSlot": 64454371
 }
